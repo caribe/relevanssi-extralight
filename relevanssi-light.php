@@ -1,18 +1,18 @@
 <?php
 /**
- * Relevanssi Light
+ * Relevanssi (Extra) Light
  *
  * /relevanssi-light.php
  *
- * @package Relevanssi Light
+ * @package Relevanssi (Extra) Light
  * @author  Mikko Saari
  * @license https://wordpress.org/about/gpl/ GNU General Public License
  * @see     https://www.relevanssi.com/light/
  *
  * @wordpress-plugin
- * Plugin Name: Relevanssi Light
+ * Plugin Name: Relevanssi (Extra) Light
  * Plugin URI: https://www.relevanssi.com/light/
- * Description: Replaces the default WP search with a fulltext index search.
+ * Description: Replaces the default WP search with a fulltext index search. (AME Customized)
  * Version: 1.2.2
  * Author: Mikko Saari
  * Author URI: https://www.mikkosaari.fi/
@@ -45,7 +45,6 @@ require 'relevanssi-light-menu.php';
 
 add_action( 'init', 'relevanssi_light_init' );
 add_action( 'admin_init', 'relevanssi_light_install' );
-add_action( 'wp_insert_post', 'relevanssi_light_update_post_data' );
 add_action( 'wp_ajax_relevanssi_light_database_alteration', 'relevanssi_light_database_alteration_action' );
 add_action( 'wp_ajax_nopriv_relevanssi_light_database_alteration', 'relevanssi_light_database_alteration_action' );
 add_action( 'wp_insert_site', 'relevanssi_light_new_blog', 10, 1 );
@@ -76,7 +75,7 @@ function relevanssi_light_init() {
 
 	if ( $options['mysql_version_good'] ) {
 		add_filter( 'posts_search', 'relevanssi_light_posts_search', 10, 2 );
-		add_filter( 'posts_search_orderby', 'relevanssi_light_posts_search_orderby', 10, 2 );
+		// add_filter( 'posts_search_orderby', 'relevanssi_light_posts_search_orderby', 10, 2 ); // NOTE Disabled to keep standard sorting
 		add_filter( 'posts_request', 'relevanssi_light_posts_request', 10, 2 );
 	}
 
@@ -155,25 +154,17 @@ function relevanssi_light_new_blog( $site ) {
 /**
  * Makes the required changes to the database.
  *
- * Adds a longtext column `relevanssi_light_data` to the `wp_posts` database
- * table and the fulltext index `relevanssi_light_fulltext` which includes the
- * `post_title`, `post_content`, `post_excerpt` and `relevanssi_light_data`
- * columns.
+ * Adds the fulltext index `relevanssi_light_fulltext` which includes the
+ * `post_title`, `post_content`, `post_excerpt` columns.
  *
  * @global object $wpdb The WP database interface.
  */
 function relevanssi_light_alter_table() {
 	global $wpdb;
 
-	$column_exists = $wpdb->get_row( "SHOW COLUMNS FROM $wpdb->posts LIKE 'relevanssi_light_data'" );
-	if ( ! $column_exists ) {
-		$sql = "ALTER TABLE $wpdb->posts ADD COLUMN `relevanssi_light_data` LONGTEXT";
-		$wpdb->query( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery
-	}
-
-	$index_exists = $wpdb->get_row( "SHOW index FROM $wpdb->posts where Column_name = 'relevanssi_light_data'" );
+	$index_exists = $wpdb->get_row( "SHOW index FROM $wpdb->posts where Key_name = 'relevanssi_light_fulltext'" );
 	if ( ! $index_exists ) {
-		$sql = "ALTER TABLE $wpdb->posts ADD FULLTEXT `relevanssi_light_fulltext` (`post_title`, `post_content`, `post_excerpt`, `relevanssi_light_data` )";
+		$sql = "ALTER TABLE $wpdb->posts ADD FULLTEXT `relevanssi_light_fulltext` (`post_title`, `post_content`, `post_excerpt` )";
 		$wpdb->query( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery
 	}
 }
@@ -210,7 +201,7 @@ function relevanssi_light_posts_search( $search, $query ) {
 		$mode = 'IN BOOLEAN MODE';
 	}
 	if ( isset( $query->query['s'] ) && ! empty( $query->query['s'] ) ) {
-		$search = " AND MATCH(post_title,post_excerpt,post_content,relevanssi_light_data) AGAINST('" . $query->query['s'] . "' $mode)";
+		$search = " AND MATCH(post_title,post_excerpt,post_content) AGAINST('" . $query->query['s'] . "' $mode)";
 	}
 	return $search;
 }
@@ -254,72 +245,12 @@ function relevanssi_light_posts_request( $request, $query ) {
 	if ( isset( $query->query['s'] ) && ! empty( $query->query['s'] ) ) {
 		$request = preg_replace(
 			'/FROM/',
-			", MATCH(post_title,post_excerpt,post_content,relevanssi_light_data) AGAINST('" . $query->query['s'] . "' $mode) AS relevance FROM",
+			", MATCH(post_title,post_excerpt,post_content) AGAINST('" . $query->query['s'] . "' $mode) AS relevance FROM",
 			$request,
 			1
 		);
 	}
 	return $request;
-}
-
-if ( ! function_exists( 'relevanssi_light_update_post_data' ) ) {
-	/**
-	 * Reads custom field content and updates the relevanssi_light_data with it
-	 *
-	 * This is a pluggable function, so feel free to write your own. This
-	 * function uses the relevanssi_light_custom_fields filter hook to adjust
-	 * the custom fields chosen to be added to the field and thus to the index.
-	 *
-	 * @param int $post_id The post ID.
-	 */
-	function relevanssi_light_update_post_data( $post_id ) {
-		global $wpdb;
-
-		/**
-		 * Filters an array of custom field names to include in the fulltext
-		 * index.
-		 *
-		 * A small trick: if you want to include all custom fields, pass an
-		 * empty string in the array, and nothing else.
-		 *
-		 * @param array An array of custom field names.
-		 */
-		$custom_fields = apply_filters( 'relevanssi_light_custom_fields', array() );
-		if ( empty( $custom_fields ) ) {
-			$wpdb->update(
-				$wpdb->posts,
-				array( 'relevanssi_light_data' => '' ),
-				array( 'ID' => $post_id ),
-				array( '%s' ),
-				array( '%d' )
-			);
-			return;
-		}
-		$extra_content = array_reduce(
-			$custom_fields,
-			function ( $content, $field ) use ( $post_id ) {
-				$values = get_post_meta( $post_id, $field, false );
-				array_walk_recursive(
-					$values,
-					function ( $value ) use ( &$content ) {
-						$content .= ' ' . $value;
-					}
-				);
-				return $content;
-			},
-			''
-		);
-
-		if ( $extra_content ) {
-			$wpdb->update(
-				$wpdb->posts,
-				array( 'relevanssi_light_data' => $extra_content ),
-				array( 'ID' => $post_id ),
-				array( '%s' ),
-				array( '%d' )
-			);
-		}
-	}
 }
 
 /**

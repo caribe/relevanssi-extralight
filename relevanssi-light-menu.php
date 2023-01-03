@@ -124,19 +124,6 @@ function relevanssi_light_options_page() {
 				recommend using <a href="https://wordpress.org/plugins/relevanssi/">Relevanssi</a>,
 				which will give you a lot more power to control what is indexed.</p>
 
-			<h3>Process posts</h3>
-
-			<p>After you've made changes to the post update data actions, you can
-				click the "Process all posts" button below to have Relevanssi Light
-				process all your posts to update the data.</p>
-
-			<form method='post'>
-				<input type="button" id='process' class='button button-primary' value='Process all posts' />
-				<div class='progress'>
-					<progress id="relevanssi_light_process" max="100" value="0">0%</progress>
-				</div>
-			</form>
-
 			<h3>Feedback and Credits</h3>
 
 			<p>Relevanssi Light is written by <a href="https://www.mikkosaari.fi/">Mikko
